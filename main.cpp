@@ -67,8 +67,8 @@ int main(int argc, char** argv) {
     }
 
     // wait for all to come together
-    MPI_Barrier(MPI_COMM_WORLD);
-    s_time = MPI_Wtime();
+    //    MPI_Barrier(MPI_COMM_WORLD);
+    //    s_time = MPI_Wtime();
 
     //init P0
     P[0] = new double[4] {
@@ -78,13 +78,13 @@ int main(int argc, char** argv) {
     //run
     reductionPhase();
 
-    backSubstitutionPhase();
+    //backSubstitutionPhase();
 
-    MPI_Barrier(MPI_COMM_WORLD);
-    e_time = MPI_Wtime();
+    //    MPI_Barrier(MPI_COMM_WORLD);
+    //    e_time = MPI_Wtime();
 
-    if (myId != 0)
-        printf("Test: process %d received message %ld bytes in %f seconds\n", myId, str_len, e_time - s_time);
+    //    if (myId != 0)
+    //        printf("Test: process %d received message %ld bytes in %f seconds\n", myId, str_len, e_time - s_time);
 
     MPI_Finalize();
 
@@ -111,37 +111,29 @@ void reductionPhase() {
         h = pow(2, j - 1);
         Pnext = new double[4];
         Pprevious = new double[4];
-
-        if (myId - h >= 0) {
-
-            //send values to other nodes
-        }
-
-        //get values from other nodes
-        if (myId + h <= M) {
-
-        }
+        
         for (int i = pow(2, j); i < pow(2, n); i += pow(2, j)) {
-
+            
             //debug("Reduction: i", (double)i)            
             if (myId == i - h) {
-                printf("Processor %i send to %i\n", myId, i);
-                MPI_Send(P[j - 1], 4, MPI_DOUBLE, myId, 0, MPI_COMM_WORLD);
+                printf("Processor %i send %f to %i\n", myId, P[j - 1][0], i);
+                MPI_Send(P[j - 1], 4, MPI_DOUBLE, i, 0, MPI_COMM_WORLD);
             } else if (myId == i + h) {
-                printf("Processor %i send to %i\n", myId, i);
-                MPI_Send(P[j - 1], 4, MPI_DOUBLE, myId + h, 0, MPI_COMM_WORLD);
+                printf("Processor %i send %f to %i\n", myId, P[j - 1][0], i);
+                MPI_Send(P[j - 1], 4, MPI_DOUBLE, i + h, 1, MPI_COMM_WORLD);
             } else if (myId == i) {
 
                 printf("Processor %i receive from %i and %i\n", myId, myId - h, myId + h);
-                MPI_Recv(Pprevious, 4, MPI_DOUBLE, myId - h, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                MPI_Recv(Pnext, 4, MPI_DOUBLE, myId + h, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                MPI_Recv(Pprevious, 4, MPI_DOUBLE, i - h, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                printf("Processor %i received %f from %i\n", myId, Pprevious[0], myId - h);
+                MPI_Recv(Pnext, 4, MPI_DOUBLE, i + h, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                 //                debug("Reduction: myId", myId);
-                computePi(j, i);
+                printf("Processor %i received %f from %i\n", myId, Pnext[0], myId + h);
 
-                //send values to other nodes
-                //MPI_Send(greeting, strlen(greeting) + 1, MPI_CHAR, 0, 0, MPI_COMM_WORLD);
+                debug_array(Pprevious, 4, "Pprevious");
+//                return;
+//                computePi(j, i);
 
-                break;
             }
         }
     }
