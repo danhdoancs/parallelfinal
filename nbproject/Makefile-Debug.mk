@@ -15,8 +15,8 @@ NM=nm
 CCADMIN=CCadmin
 RANLIB=ranlib
 CC=gcc
-CCC=/home/david/openmpi/bin/mpic++
-CXX=/home/david/openmpi/bin/mpic++
+CCC=/prg/openmpi/bin/mpic++
+CXX=/prg/openmpi/bin/mpic++
 FC=gfortran
 AS=as
 
@@ -42,8 +42,8 @@ OBJECTFILES= \
 CFLAGS=
 
 # CC Compiler Flags
-CCFLAGS=-g -Wall -o final
-CXXFLAGS=-g -Wall -o final
+CCFLAGS=-g -Wall
+CXXFLAGS=-g -Wall
 
 # Fortran Compiler Flags
 FFLAGS=
