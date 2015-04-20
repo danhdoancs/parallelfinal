@@ -18,6 +18,7 @@ using namespace std;
 void reductionPhase();
 void computePi(int j, int i);
 void backSubstitutionPhase();
+void array_remove(double* arr, int size, int removeIdx);
 void debug_array(double* arr, int size, string msg);
 void debug(string msg, double varr);
 
@@ -60,7 +61,7 @@ int main(int argc, char** argv) {
     MPI_Comm_size(MPI_COMM_WORLD, &noOfProcesses);
     MPI_Comm_rank(MPI_COMM_WORLD, &myId);
 
-    myId++;
+    //    myId++;
 
     //check if noOfProcess is not equal n
     //    if (noOfProcesses != M) {
@@ -78,16 +79,15 @@ int main(int argc, char** argv) {
     };
 
     //run
-    if (myId == 1) {
+    if (myId == 0) {
         //broadcast initial values
+    } else {
+        reductionPhase();
+        backSubstitutionPhase();
     }
 
-    reductionPhase();
-    backSubstitutionPhase();
-
-
-    if (myId == 1) {
-        X = new double[M];
+    if (myId == 0) {
+        X = new double[N];
     }
     MPI_Gather(&x, 1, MPI_DOUBLE, X, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
@@ -95,7 +95,8 @@ int main(int argc, char** argv) {
     MPI_Barrier(MPI_COMM_WORLD);
     e_time = MPI_Wtime();
 
-    if (myId == 1) {
+    if (myId == 0) {
+        array_remove(X, N, 0);
         debug_array(X, M, "array X");
         printf("Run time: %f seconds\n", (e_time - s_time));
     }
@@ -120,19 +121,19 @@ void backSubstitutionPhase() {
             if (myId == i) {
                 if (t % 2 == 0) {
                     //                    printf("k:%i,h:%i - Processor %i send %f to %i\n", k, h, myId, x, myId + h);
-                    MPI_Send(&x, 1, MPI_DOUBLE, myId + h - 1, 0, MPI_COMM_WORLD);
+                    MPI_Send(&x, 1, MPI_DOUBLE, myId + h, 0, MPI_COMM_WORLD);
                     //                    printf("k:%i,h:%i - Processor %i send %f to %i\n", k, h, myId, x, myId - h);
-                    MPI_Send(&x, 1, MPI_DOUBLE, myId - h - 1, 0, MPI_COMM_WORLD);
+                    MPI_Send(&x, 1, MPI_DOUBLE, i - h, 0, MPI_COMM_WORLD);
                 } else {
                     if (myId + h <= N - h) {
-                        //                        printf("k:%i,h:%i - Processor %i receive from %i\n", k, h, myId, myId + h);
-                        MPI_Recv(&xnext, 1, MPI_DOUBLE, myId + h - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                        //printf("k:%i,h:%i - Processor %i receive from %i\n", k, h, myId, myId + h);
+                        MPI_Recv(&xnext, 1, MPI_DOUBLE, myId + h, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                         //                        printf("k:%i,h:%i - Processor %i received %f from %i\n", k, h, myId, xnext, myId + h);
                     }
 
                     if (myId - h >= h) {
                         //                        printf("k:%i,h:%i - Processor %i receive from %i\n", k, h, myId, myId - h);
-                        MPI_Recv(&xpre, 1, MPI_DOUBLE, i - h - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                        MPI_Recv(&xpre, 1, MPI_DOUBLE, i - h, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                         //                        printf("k:%i,h:%i - Processor %i received %f from %i\n", k, h, myId, xpre, myId - h);
                     }
 
@@ -156,17 +157,17 @@ void reductionPhase() {
             //debug("Reduction: i", (double)i)            
             if (myId == i - h) {
                 //                printf("Processor %i send %f to %i\n", myId, P[j - 1][0], i);
-                MPI_Send(P[j - 1], 4, MPI_DOUBLE, i - 1, 0, MPI_COMM_WORLD);
+                MPI_Send(P[j - 1], 4, MPI_DOUBLE, i, 0, MPI_COMM_WORLD);
             } else if (myId == i + h) {
                 //printf("Processor %i send %f to %i\n", myId, P[j - 1][0], i);
-                MPI_Send(P[j - 1], 4, MPI_DOUBLE, i - 1, 1, MPI_COMM_WORLD);
+                MPI_Send(P[j - 1], 4, MPI_DOUBLE, i, 1, MPI_COMM_WORLD);
 
             } else if (myId == i) {
 
                 //printf("Processor %i receive from %i and %i\n", myId, i - h, i + h);
-                MPI_Recv(Pprevious, 4, MPI_DOUBLE, i - h - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                MPI_Recv(Pprevious, 4, MPI_DOUBLE, i - h, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                 //printf("Processor %i received %f from %i\n", myId, Pprevious[0], i - h);
-                MPI_Recv(Pnext, 4, MPI_DOUBLE, i + h - 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                MPI_Recv(Pnext, 4, MPI_DOUBLE, i + h, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
                 //printf("Processor %i received %f from %i\n", myId, Pnext[0], i + h);
                 computePi(j, i);
@@ -235,7 +236,14 @@ void debug_array(double* arr, int size, string msg = "") {
     fflush(stdout);
 }
 
-void array_show(int* arr, int size) {
+void array_show(double* arr, int size) {
     for (int i = 0; i < size; i++)
         cout << arr[i] << "  ";
+}
+
+void array_remove(double* arr, int size, int removeIdx) {
+    for(int i = removeIdx + 1; i < size; i++)
+    {
+        arr[i-1] = arr[i];
+    }
 }
