@@ -28,25 +28,13 @@ int noOfProcesses;
 int myId;
 double s_time, e_time;
 
-const int N = 8;
-const int M = N - 1;
-const int n = log2(N);
+int N, M, n;
 
-double* A = new double[M] {
-    0, 5, 1, 3, 6, 7, 2
-};
-double* B = new double[M] {
-    1, 2, 9, 3, 5, 8, 4
-};
-double* C = new double[M] {
-    3, 5, 1, 3, 4, 2, 0
-};
-double* D = new double[M] {
-    6, 2, 4, 1, 5, 7, 8
-};
+double *A, *B, *C, *D, *X;
+
 double x;
-double* X;
 double** P = new double*[n];
+double* Po;
 double* Pnext;
 double* Pprevious;
 int h;
@@ -61,27 +49,48 @@ int main(int argc, char** argv) {
     MPI_Comm_size(MPI_COMM_WORLD, &noOfProcesses);
     MPI_Comm_rank(MPI_COMM_WORLD, &myId);
 
-    //    myId++;
-
-    //check if noOfProcess is not equal n
-    //    if (noOfProcesses != M) {
-    //        cout << "Please use " << M << "processors\n";
-    //        return -1;
-    //    }
+    N = noOfProcesses;
+    M = N - 1;
+    n = log2(N);
 
     // wait for all to come together
     MPI_Barrier(MPI_COMM_WORLD);
     s_time = MPI_Wtime();
 
-    //init P0
-    P[0] = new double[4] {
-        A[myId - 1], B[myId - 1], C[myId - 1], D[myId - 1]
-    };
-
     //run
     if (myId == 0) {
         //broadcast initial values
-    } else {
+        A = new double[N] {
+            0, 0, 1, 1, 1, 1, 1, 1
+        };
+        
+        B = new double[N] {
+            0, -4, -3, -3, -3, -3, -3, -4
+        };
+        C = new double[N] {
+            0, 1, 1, 1, 1, 1, 1, 0
+        };
+        D = new double[N] {
+            0, -3, -2, -2, -2, -2, -2, -3
+        };
+
+        Po = new double[N*4];
+        for (int i = 0, j = 0; i < N; i++) {
+            Po[j++] = A[i];
+            Po[j++] = B[i];
+            Po[j++] = C[i];
+            Po[j++] = D[i];
+        }
+    }
+
+    //broadcast values
+    debug_array(Po,N*4,"@@@@@@@@@@@@@@@@@@@@@@@@@ Po");
+    P[0] = new double[4];
+    MPI_Scatter(Po, 4, MPI_DOUBLE, P[0], 4, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    debug_array(P[0],4,"%%%%%%%%%%%%%%%%%%%%%%%%% P[0]");
+    return 0;
+    if (myId > 0) {
+
         reductionPhase();
         backSubstitutionPhase();
     }
@@ -242,8 +251,7 @@ void array_show(double* arr, int size) {
 }
 
 void array_remove(double* arr, int size, int removeIdx) {
-    for(int i = removeIdx + 1; i < size; i++)
-    {
-        arr[i-1] = arr[i];
+    for (int i = removeIdx + 1; i < size; i++) {
+        arr[i - 1] = arr[i];
     }
 }
