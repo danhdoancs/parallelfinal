@@ -1,0 +1,237 @@
+/*
+ * File:   main.cpp
+ * Author: david
+ *
+ * Created on April 15, 2015, 10:05 PM
+ */
+
+#include <stdio.h>
+#include <math.h>
+#include <unistd.h>
+#include <mpi.h>
+#include <string.h>
+#include <cstdlib>
+#include <iostream>
+#include <fstream>
+
+using namespace std;
+void reductionPhase();
+void computePi(int j, int i);
+void backSubstitutionPhase();
+void array_remove(double* arr, int size, int removeIdx);
+void debug_array(double* arr, int size, string msg);
+void debug(string msg, double varr);
+
+//vars
+long str_len;
+int noOfProcesses;
+int myId;
+double s_time, e_time;
+
+int N, M, n;
+
+double *A, *B, *C, *D, *X;
+
+double x;
+double** P = new double*[n];
+double* Po;
+double* Pnext;
+double* Pprevious;
+int h;
+
+/*
+ *
+ */
+int main(int argc, char** argv) {
+
+    //communication
+    MPI_Init(NULL, NULL);
+    MPI_Comm_size(MPI_COMM_WORLD, &noOfProcesses);
+    MPI_Comm_rank(MPI_COMM_WORLD, &myId);
+
+    N = noOfProcesses;
+    n = log2(N);
+
+    // wait for all to come together
+    MPI_Barrier(MPI_COMM_WORLD);
+    s_time = MPI_Wtime();
+
+    //run
+    if (myId == 0) {
+        //broadcast initial values
+        A = new double[N];
+        B = new double[N];
+        C = new double[N];
+        D = new double[N];
+
+        A[0] = 0;
+        A[N - 1] = 1;
+        B[0] = -4;
+        B[N - 1] = -4;
+        C[0] = 1;
+        C[N - 1] = 0;
+        D[0] = -3;
+        D[N - 1] = -3;
+
+        for (int i = 1; i < N - 1; i++) {
+
+            A[i] = 1;
+            B[i] = -4;
+            C[i] = 1;
+            D[i] = -2;
+        }
+
+        Po = new double[N * 4];
+        for (int i = 0, j = 0; i < N; i++) {
+            Po[j++] = A[i];
+            Po[j++] = B[i];
+            Po[j++] = C[i];
+            Po[j++] = D[i];
+        }
+        debug_array(Po, N * 4, "@@@@@@@@@@@@@@@@@@@@@@@@@ Po");
+        debug_array(A, N, "Vector A");
+        debug_array(B, N, "Vector B");
+        debug_array(C, N, "Vector C");
+        debug_array(D, N, "Vector D");
+        X = new double[N];
+    }
+
+    //broadcast values
+    //debug("@@@@@@@@@@@@@@@@@@@@@@@@@ Po size", sizeof (Po));
+    //debug("@@@@@@@@@@@@@@@@@@@@@@@@@ No of processors", noOfProcesses);
+    P[0] = new double[4];
+    MPI_Scatter(Po, 4, MPI_DOUBLE, P[0], 4, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    debug_array(P[0], 4, "%%%%%%%%%%%%%%%%%%%%%%%%% P[0]");
+
+    reductionPhase();
+    backSubstitutionPhase();
+
+    MPI_Gather(&x, 1, MPI_DOUBLE, X, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+    MPI_Barrier(MPI_COMM_WORLD);
+    e_time = MPI_Wtime();
+
+    if (myId == 0) {
+        //array_remove(X, N, 0);
+        debug_array(X, N, "array X");
+        printf("Run time: %f seconds\n", (e_time - s_time));
+    }
+
+    MPI_Finalize();
+    return 0;
+}
+
+void debug_exit() {
+    MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Finalize();
+    exit(0);
+}
+
+void backSubstitutionPhase() {
+    for (int i = 0; i < N; i++) {
+        if (myId == i) {
+            //            debug_array(P[n],4, )
+            x = P[n][3] / (P[n][1]);
+            printf("i:%d - %f = %f / %f\n", i, x, P[n][3], P[n][1]);
+        }
+    }
+}
+
+void reductionPhase() {
+    for (int j = 1; j <= n; j++) {
+
+        h = pow(2, j - 1);
+        Pnext = new double[4];
+        Pprevious = new double[4];
+
+        for (int i = 0; i < N; i++) {
+            //debug("Reduction: i", (double)i)            
+            if (myId == i - h && i - h >= 0) {
+                printf("J:%d - Processor %i send %f,%f,%f,%f to %i\n", j, myId, P[j - 1][0], P[j - 1][1], P[j - 1][2], P[j - 1][3], i);
+                MPI_Send(P[j - 1], 4, MPI_DOUBLE, i, 0, MPI_COMM_WORLD);
+            } else if (myId == i + h && i + h < N) {
+                printf("J:%d - Processor %i send %f,%f,%f,%f to %i\n", j, myId, P[j - 1][0], P[j - 1][1], P[j - 1][2], P[j - 1][3], i);
+                MPI_Send(P[j - 1], 4, MPI_DOUBLE, i, 1, MPI_COMM_WORLD);
+
+            } else if (myId == i) {
+
+                if (i - h >= 0) {
+                    //printf("Processor %i receive from %i and %i\n", myId, i - h, i + h);
+                    MPI_Recv(Pprevious, 4, MPI_DOUBLE, i - h, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                    printf("J:%d - Processor %i received %f,%f,%f,%f from %i\n", j, myId, Pprevious[0], P[j - 1][1], P[j - 1][2], P[j - 1][3], i - h);
+                }
+                if (i + h < N) {
+
+                    MPI_Recv(Pnext, 4, MPI_DOUBLE, i + h, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                    printf("J:%d - Processor %i received %f,%f,%f,%f from %i\n", j, myId, Pnext[0], P[j - 1][1], P[j - 1][2], P[j - 1][3], i + h);
+                }
+                computePi(j, i);
+            }
+        }
+    }
+}
+
+void computePi(int j, int i) {
+    //init
+    double e, f;
+
+    //debug_array(P[j - 1], 4, "P " + std::to_string(j - 1));
+
+//    if (i <= 0 or i >= N) {
+//        P[j] = new double[4] {
+//            0, 1, 0, 0
+//        };
+//        x = 0;
+//    } else 
+    {
+
+        P[j] = new double[4];
+
+        e = -(P[j - 1][0]) / (Pprevious[1]);
+        printf("Processor %i(j:%d) - e:%f = -P[j-1][0]:%f / Pprevious[1]:%f\n", i, j, e, P[j - 1][0], Pprevious[1]);
+
+        f = -(P[j - 1][2]) / (Pnext[1]);
+
+        P[j][0] = e * Pprevious[0];
+        P[j][2] = f * Pnext[2];
+        P[j][1] = P[j - 1][1] + e * Pprevious[2] + f * Pnext[0];
+        P[j][3] = P[j - 1][3] + e * Pprevious[3] + f * Pnext[3];
+
+        //debug_array(P[j], 4, "P" + std::to_string(j) + " of processor " + std::to_string(myId));
+        //printf("Processor %i computePi(j:%i, i:%i, h:%i, e:%f, f:%f)\n", i, j, i, h, e, f);
+    }
+}
+
+//debug functions
+
+void debug(string msg, double varr) {
+
+    cout << "\nDebugging....." << msg << ": <" << varr << ">\n";
+    fflush(stdout);
+}
+
+//debug a array
+
+void debug_array(double* arr, int size, string msg = "") {
+    int i = 0;
+    cout << "\nDebugging..." << msg << ": ";
+
+    for (; i < size; i++)
+        cout << arr[i] << "  ";
+    cout << "\n";
+
+    fflush(stdout);
+}
+
+void array_show(double* arr, int size) {
+    for (int i = 0; i < size; i++)
+        cout << arr[i] << "  ";
+}
+
+void array_remove(double* arr, int size, int removeIdx) {
+    for (int i = removeIdx + 1; i < size; i++) {
+        arr[i - 1] = arr[i];
+    }
+}
+
+

@@ -1,0 +1,241 @@
+/* 
+ * File:   main.cpp
+ * Author: david
+ *
+ * Created on April 15, 2015, 10:05 PM
+ */
+
+#include <stdio.h>
+#include <math.h>
+#include <unistd.h>
+#include <mpi.h>
+#include <string.h> 
+#include <cstdlib>
+#include <iostream>
+#include <fstream>
+
+using namespace std;
+void reductionPhase();
+void computePi(int j, int i);
+void backSubstitutionPhase();
+void debug_array(double* arr, int size, string msg);
+void debug(string msg, double varr);
+
+//vars
+long str_len;
+int noOfProcesses;
+int myId;
+double s_time, e_time;
+
+const int N = 8;
+const int M = N - 1;
+const int n = log2(N);
+
+double* A = new double[M] {
+    0, 5, 1, 3, 6, 7, 2
+};
+double* B = new double[M] {
+    1, 2, 9, 3, 5, 8, 4
+};
+double* C = new double[M] {
+    3, 5, 1, 3, 4, 2, 0
+};
+double* D = new double[M] {
+    6, 2, 4, 1, 5, 7, 8
+};
+double x;
+double* X;
+double** P = new double*[n];
+double* Pnext;
+double* Pprevious;
+int h;
+
+/*
+ * 
+ */
+int main(int argc, char** argv) {
+
+    //communication
+    MPI_Init(NULL, NULL);
+    MPI_Comm_size(MPI_COMM_WORLD, &noOfProcesses);
+    MPI_Comm_rank(MPI_COMM_WORLD, &myId);
+
+    myId++;
+
+    //check if noOfProcess is not equal n
+    //    if (noOfProcesses != M) {
+    //        cout << "Please use " << M << "processors\n";
+    //        return -1;
+    //    }
+
+    // wait for all to come together
+    MPI_Barrier(MPI_COMM_WORLD);
+    s_time = MPI_Wtime();
+
+    //init P0
+    P[0] = new double[4] {
+        A[myId - 1], B[myId - 1], C[myId - 1], D[myId - 1]
+    };
+
+    //run
+    if (myId == 1) {
+        //broadcast initial values
+    }
+
+    reductionPhase();
+    backSubstitutionPhase();
+
+
+    if (myId == 1) {
+        X = new double[M];
+    }
+    MPI_Gather(&x, 1, MPI_DOUBLE, X, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+
+    MPI_Barrier(MPI_COMM_WORLD);
+    e_time = MPI_Wtime();
+
+    if (myId == 1) {
+        debug_array(X, M, "array X");
+        printf("Run time: %f seconds\n", (e_time - s_time));
+    }
+
+    MPI_Finalize();
+    return 0;
+}
+
+void backSubstitutionPhase() {
+    int k = pow(2, n - 1);
+    if (myId == k) {
+        //debug_array(P[n - 1], 4, "Pn-1");
+        x = P[n - 1][3] / P[n - 1][1];
+        //printf("k:%i,id:%i - x = %f\n", k, myId, x);
+    }
+
+    for (int k = n - 1; k > 0; k--) {
+        int h = pow(2, k - 1);
+        double xpre, xnext;
+        int t = 1;
+        for (int i = t * h; i <= N - h; ++t, i = t * h) {
+            if (myId == i) {
+                if (t % 2 == 0) {
+                    //                    printf("k:%i,h:%i - Processor %i send %f to %i\n", k, h, myId, x, myId + h);
+                    MPI_Send(&x, 1, MPI_DOUBLE, myId + h - 1, 0, MPI_COMM_WORLD);
+                    //                    printf("k:%i,h:%i - Processor %i send %f to %i\n", k, h, myId, x, myId - h);
+                    MPI_Send(&x, 1, MPI_DOUBLE, myId - h - 1, 0, MPI_COMM_WORLD);
+                } else {
+                    if (myId + h <= N - h) {
+                        //                        printf("k:%i,h:%i - Processor %i receive from %i\n", k, h, myId, myId + h);
+                        MPI_Recv(&xnext, 1, MPI_DOUBLE, myId + h - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                        //                        printf("k:%i,h:%i - Processor %i received %f from %i\n", k, h, myId, xnext, myId + h);
+                    }
+
+                    if (myId - h >= h) {
+                        //                        printf("k:%i,h:%i - Processor %i receive from %i\n", k, h, myId, myId - h);
+                        MPI_Recv(&xpre, 1, MPI_DOUBLE, i - h - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                        //                        printf("k:%i,h:%i - Processor %i received %f from %i\n", k, h, myId, xpre, myId - h);
+                    }
+
+                    x = (P[k - 1][3] - P[k - 1][0] * xpre - P[k - 1][2] * xnext) / (P[k - 1][1]);
+                }
+            }
+
+        }
+    }
+}
+
+void reductionPhase() {
+    for (int j = 1; j < n; j++) {
+
+        h = pow(2, j - 1);
+        Pnext = new double[4];
+        Pprevious = new double[4];
+
+        for (int i = pow(2, j); i < pow(2, n); i += pow(2, j)) {
+
+            //debug("Reduction: i", (double)i)            
+            if (myId == i - h) {
+                //                printf("Processor %i send %f to %i\n", myId, P[j - 1][0], i);
+                MPI_Send(P[j - 1], 4, MPI_DOUBLE, i - 1, 0, MPI_COMM_WORLD);
+            } else if (myId == i + h) {
+                //printf("Processor %i send %f to %i\n", myId, P[j - 1][0], i);
+                MPI_Send(P[j - 1], 4, MPI_DOUBLE, i - 1, 1, MPI_COMM_WORLD);
+
+            } else if (myId == i) {
+
+                //printf("Processor %i receive from %i and %i\n", myId, i - h, i + h);
+                MPI_Recv(Pprevious, 4, MPI_DOUBLE, i - h - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                //printf("Processor %i received %f from %i\n", myId, Pprevious[0], i - h);
+                MPI_Recv(Pnext, 4, MPI_DOUBLE, i + h - 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+                //printf("Processor %i received %f from %i\n", myId, Pnext[0], i + h);
+                computePi(j, i);
+
+            }
+        }
+    }
+}
+
+void computePi(int j, int i) {
+    //init
+    double e, f;
+
+    //debug("(B[j - 1][i - h])", (B[j - 1][i - h]));
+    //debug_array(B[j - 1], M, "B");
+
+    //debug_array(P[j - 1], 4, "P " + std::to_string(j - 1));
+
+    if (i <= 0 or i >= N) {
+        P[j] = new double[4] {
+            0, 1, 0, 0
+        };
+        x = 0;
+    } else {
+
+        P[j] = new double[4];
+
+        //debug_array(Pprevious, 4, "Pprevious ");
+        //debug_array(Pnext, 4, "Pnext ");
+
+        e = -(P[j - 1][0]) / (Pprevious[1]);
+
+        f = -(P[j - 1][2]) / (Pnext[1]);
+
+        P[j][0] = e * Pprevious[0];
+        P[j][2] = f * Pnext[2];
+        P[j][1] = P[j - 1][1] + e * Pprevious[2] + f * Pnext[0];
+        P[j][3] = P[j - 1][3] + e * Pprevious[3] + f * Pnext[3];
+
+        //debug_array(P[j], 4, "P" + std::to_string(j) + " of processor " + std::to_string(myId));
+        //printf("Processor %i computePi(j:%i, i:%i, h:%i, e:%f, f:%f)\n", i, j, i, h, e, f);
+
+    }
+
+
+}
+
+//debug functions
+
+void debug(string msg, double varr) {
+
+    cout << "\nDebugging....." << msg << ": <" << varr << ">\n";
+    fflush(stdout);
+}
+
+//debug a array
+
+void debug_array(double* arr, int size, string msg = "") {
+    int i = 0;
+    cout << "\nDebugging..." << msg << ": ";
+
+    for (; i < size; i++)
+        cout << arr[i] << "  ";
+    cout << "\n";
+
+    fflush(stdout);
+}
+
+void array_show(int* arr, int size) {
+    for (int i = 0; i < size; i++)
+        cout << arr[i] << "  ";
+}
