@@ -1,6 +1,6 @@
 /*
  * File:   main.cpp
- * Author: david
+ * Author: david doan
  *
  * Created on April 15, 2015, 10:05 PM
  */
@@ -28,7 +28,7 @@ int noOfProcesses;
 int myId;
 double s_time, e_time;
 
-int N, M, n;
+int N, M, n, h, localFlops = 0;
 
 double *A, *B, *C, *D, *X;
 
@@ -37,7 +37,6 @@ double** P = new double*[n];
 double* Po;
 double* Pnext;
 double* Pprevious;
-int h;
 
 /*
  *
@@ -103,7 +102,10 @@ int main(int argc, char** argv) {
     }
     
     MPI_Gather(&x, 1, MPI_DOUBLE, X, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-
+    
+    //sum up the Flops
+    long globalFlops = 0;
+	MPI_Reduce(&localFlops, &globalFlops, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
 
     MPI_Barrier(MPI_COMM_WORLD);
     e_time = MPI_Wtime();
@@ -112,24 +114,21 @@ int main(int argc, char** argv) {
         array_remove(X, N, 0);
         debug_array(X, M, "array X");
         printf("Run time: %f seconds\n", (e_time - s_time));
+        printf("Number of floating point operations: %ld\n", globalFlops);
     }
 
     MPI_Finalize();
     return 0;
 }
 
-void debug_exit() {
-    MPI_Barrier(MPI_COMM_WORLD);
-    MPI_Finalize();
-    exit(0);
-}
-
 void backSubstitutionPhase() {
     int k = pow(2, n - 1);
     if (myId == k) {
         //debug_array(P[n - 1], 4, "Pn-1");
+        //compute 1
         x = P[n - 1][3] / P[n - 1][1];
         //printf("k:%i,id:%i - x = %f\n", k, myId, x);
+		localFlops++;
     }
 
     for (int k = n - 1; k > 0; k--) {
@@ -156,7 +155,10 @@ void backSubstitutionPhase() {
                         //                        printf("k:%i,h:%i - Processor %i received %f from %i\n", k, h, myId, xpre, myId - h);
                     }
 
+					//compute 5
                     x = (P[k - 1][3] - P[k - 1][0] * xpre - P[k - 1][2] * xnext) / (P[k - 1][1]);
+					
+					localFlops += 5;
                 }
             }
 
@@ -205,31 +207,45 @@ void computePi(int j, int i) {
 
     //debug_array(P[j - 1], 4, "P " + std::to_string(j - 1));
 
-    if (i <= 0 or i >= N) {
-        P[j] = new double[4] {
-            0, 1, 0, 0
-        };
-        x = 0;
-    } else {
+	if(myId > 0)
+	{
+		if (myId == 0) {
+			Pprevious = new double[4] {
+				0, 1, 0, 0
+			};
+		} else if (myId == N-1) {
+			Pnext = new double[4] {
+				0, 1, 0, 0
+			};
+		}  
+     
 
         P[j] = new double[4];
 
         //debug_array(Pprevious, 4, "Pprevious ");
         //debug_array(Pnext, 4, "Pnext ");
 
+		//compute 1
         e = -(P[j - 1][0]) / (Pprevious[1]);
-
+		//compute 1
         f = -(P[j - 1][2]) / (Pnext[1]);
-
+		//compute 1
         P[j][0] = e * Pprevious[0];
+        //compute 1
         P[j][2] = f * Pnext[2];
+        //compute 4
         P[j][1] = P[j - 1][1] + e * Pprevious[2] + f * Pnext[0];
+        //compute 4
         P[j][3] = P[j - 1][3] + e * Pprevious[3] + f * Pnext[3];
 
         //debug_array(P[j], 4, "P" + std::to_string(j) + " of processor " + std::to_string(myId));
         //printf("Processor %i computePi(j:%i, i:%i, h:%i, e:%f, f:%f)\n", i, j, i, h, e, f);
 
-    }
+		//add Flops
+		localFlops += 12;
+    
+	}
+    
 }
 
 //debug functions
@@ -264,4 +280,8 @@ void array_remove(double* arr, int size, int removeIdx) {
     }
 }
 
-
+void debug_exit() {
+    MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Finalize();
+    exit(0);
+}
