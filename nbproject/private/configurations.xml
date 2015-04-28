@@ -13,8 +13,6 @@
         <gdb_interceptlist>
           <gdbinterceptoptions gdb_all="false" gdb_unhandled="true" gdb_unexpected="true"/>
         </gdb_interceptlist>
-        <gdb_signals>
-        </gdb_signals>
         <gdb_options>
           <DebugOptions>
             <option name="debug_command"
@@ -30,13 +28,15 @@
       </nativedebugger>
       <runprofile version="9">
         <runcommandpicklist>
-          <runcommandpicklistitem>mpiexec -n 4 final</runcommandpicklistitem>
-          <runcommandpicklistitem>"${OUTPUT_PATH}"</runcommandpicklistitem>
-          <runcommandpicklistitem>/home/david/openmpi/bin/mpiexec -n 4 final</runcommandpicklistitem>
           <runcommandpicklistitem>/home/david/openmpi/bin/mpiexec -n 4</runcommandpicklistitem>
           <runcommandpicklistitem>/home/david/openmpi/bin/mpiexec -n 4 parallelfinal</runcommandpicklistitem>
           <runcommandpicklistitem>/home/david/openmpi/bin/mpiexec -n 7 parallelfinal</runcommandpicklistitem>
           <runcommandpicklistitem>/prg/openmpi/bin/mpiexec -n 7 parallelfinal</runcommandpicklistitem>
+          <runcommandpicklistitem>/prg/openmpi/bin/mpiexec -n 32 parallelfinal</runcommandpicklistitem>
+          <runcommandpicklistitem>/prg/openmpi/bin/mpiexec -n 2 parallelfinal</runcommandpicklistitem>
+          <runcommandpicklistitem>/prg/openmpi/bin/mpiexec -n 16 parallelfinal</runcommandpicklistitem>
+          <runcommandpicklistitem>/prg/openmpi/bin/mpiexec -n 5 parallelfinal</runcommandpicklistitem>
+          <runcommandpicklistitem>/prg/openmpi/bin/mpiexec -n 4 parallelfinal</runcommandpicklistitem>
           <runcommandpicklistitem>/prg/openmpi/bin/mpiexec -n 8 parallelfinal</runcommandpicklistitem>
         </runcommandpicklist>
         <runcommand>/prg/openmpi/bin/mpiexec -n 8 parallelfinal</runcommand>
