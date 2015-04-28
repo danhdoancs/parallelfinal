@@ -1,7 +1,7 @@
 /*
- * File:   main.cpp
- * Author: david doan
- *
+ * File:   Algorithm2.cpp
+ * Author: david
+ * 
  * Created on April 15, 2015, 10:05 PM
  */
 
@@ -28,12 +28,13 @@ int noOfProcesses;
 int myId;
 double s_time, e_time;
 
-int N, M, n, h, localFlops = 0;
+int N, n, h, localSize, localPiSize, localFlops = 0;
+long globalFlops = 0;
 
 double *A, *B, *C, *D, *X;
 
-double x;
-double** P = new double*[n];
+double* x;
+double** P;
 double* Po;
 double* Pnext;
 double* Pprevious;
@@ -48,35 +49,45 @@ int main(int argc, char** argv) {
     MPI_Comm_size(MPI_COMM_WORLD, &noOfProcesses);
     MPI_Comm_rank(MPI_COMM_WORLD, &myId);
 
-    N = noOfProcesses * pow(1,2);
-    M = N - 1;
+	localSize = pow(2,1);
+    N = noOfProcesses * localSize;
     n = log2(N);
+    P = new double*[n];
+    localPiSize = localSize * 4;
+    x = new double[localSize];
 
     // wait for all to come together
     MPI_Barrier(MPI_COMM_WORLD);
     s_time = MPI_Wtime();
+    
+    //process start from 1
+    myId++;
 
     //run
-    if (myId == 0) {
+    if (myId == 1) {
         //broadcast initial values
         A = new double[N];
         B = new double[N];
         C = new double[N];
         D = new double[N];
-        
-        A[0] = 0; A[1] = 0; A[N-1] = 1;
-        B[0] = 0; B[1] = -4; B[N-1] = -4;
-        C[0] = 0; C[1] = 1; C[N-1] = 0;
-        D[0] = 0; D[1] = -3; D[N-1] = -3;
-        
-        for (int i = 2; i < N-1; i++) {
-            
+
+        A[0] = 0;
+        A[N - 1] = 1;
+        B[0] = -4;
+        B[N - 1] = -4;
+        C[0] = 1;
+        C[N - 1] = 0;
+        D[0] = -3;
+        D[N - 1] = -3;
+
+        for (int i = 1; i < N - 1; i++) {
+
             A[i] = 1;
             B[i] = -4;
             C[i] = 1;
-            D[i] = -2;        
+            D[i] = -2;
         }
-        
+
         Po = new double[N * 4];
         for (int i = 0, j = 0; i < N; i++) {
             Po[j++] = A[i];
@@ -84,38 +95,37 @@ int main(int argc, char** argv) {
             Po[j++] = C[i];
             Po[j++] = D[i];
         }
-        //debug_array(Po, N * 4, "@@@@@@@@@@@@@@@@@@@@@@@@@ Po");
-        
+        debug_array(Po, N * 4, "@@@@@@@@@@@@@@@@@@@@@@@@@ Po");
+        debug_array(A, N, "Vector A");
+        debug_array(B, N, "Vector B");
+        debug_array(C, N, "Vector C");
+        debug_array(D, N, "Vector D");
         X = new double[N];
     }
 
     //broadcast values
     //debug("@@@@@@@@@@@@@@@@@@@@@@@@@ Po size", sizeof (Po));
     //debug("@@@@@@@@@@@@@@@@@@@@@@@@@ No of processors", noOfProcesses);
-    P[0] = new double[4];
-    MPI_Scatter(Po, 4, MPI_DOUBLE, P[0], 4, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    //debug_array(P[0], 4, "%%%%%%%%%%%%%%%%%%%%%%%%% P[0]");
-    //debug_exit();
-    if (myId > 0) {
-        reductionPhase();
-        backSubstitutionPhase();
-    }
-    
-    MPI_Gather(&x, 1, MPI_DOUBLE, X, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    
+    P[0] = new double[localPiSize];
+    MPI_Scatter(Po, localPiSize, MPI_DOUBLE, P[0], localPiSize, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    debug_array(P[0], localPiSize, "%%%%%%%%%%%%%%%%%%%%%%%%% P[0]");
+
+    reductionPhase();
+    backSubstitutionPhase();
+
+    MPI_Gather(x, localSize, MPI_DOUBLE, X, localSize, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
     MPI_Barrier(MPI_COMM_WORLD);
     e_time = MPI_Wtime();
-
-    //sum up the Flops
-    long globalFlops = 0;
+    
+    //sum up the flops   
 	MPI_Reduce(&localFlops, &globalFlops, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
 
-    if (myId == 0) {
-        array_remove(X, N, 0);
-        debug_array(X, M, "array X");
-        printf("Number of processors: %d\n", N);
-        printf("Size of matrix A: 2^%d - 1\n", n);
+    if (myId == 1) {
+        debug_array(X, N, "array X");
         printf("Run time: %f seconds\n", (e_time - s_time));
+        printf("Number of processors: %d\n", noOfProcesses);
+        printf("Size of matrix A: 2^%d x 2^%d\n", n, n);
         printf("Number of floating point operations: %ld\n", globalFlops);
     }
 
@@ -123,78 +133,75 @@ int main(int argc, char** argv) {
     return 0;
 }
 
+void debug_exit() {
+    MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Finalize();
+    exit(0);
+}
+
 void backSubstitutionPhase() {
-    int k = pow(2, n - 1);
-    if (myId == k) {
-        //debug_array(P[n - 1], 4, "Pn-1");
-        //compute 1
-        x = P[n - 1][3] / P[n - 1][1];
-        //printf("k:%i,id:%i - x = %f\n", k, myId, x);
-		localFlops++;
-    }
-
-    for (int k = n - 1; k > 0; k--) {
-        int h = pow(2, k - 1);
-        double xpre, xnext;
-        int t = 1;
-        for (int i = t * h; i <= N - h; ++t, i = t * h) {
-            if (myId == i) {
-                if (t % 2 == 0) {
-                    //                    printf("k:%i,h:%i - Processor %i send %f to %i\n", k, h, myId, x, myId + h);
-                    MPI_Send(&x, 1, MPI_DOUBLE, myId + h, 0, MPI_COMM_WORLD);
-                    //                    printf("k:%i,h:%i - Processor %i send %f to %i\n", k, h, myId, x, myId - h);
-                    MPI_Send(&x, 1, MPI_DOUBLE, i - h, 0, MPI_COMM_WORLD);
-                } else {
-                    if (myId + h <= N - h) {
-                        //printf("k:%i,h:%i - Processor %i receive from %i\n", k, h, myId, myId + h);
-                        MPI_Recv(&xnext, 1, MPI_DOUBLE, myId + h, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                        //                        printf("k:%i,h:%i - Processor %i received %f from %i\n", k, h, myId, xnext, myId + h);
-                    }
-
-                    if (myId - h >= h) {
-                        //                        printf("k:%i,h:%i - Processor %i receive from %i\n", k, h, myId, myId - h);
-                        MPI_Recv(&xpre, 1, MPI_DOUBLE, i - h, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                        //                        printf("k:%i,h:%i - Processor %i received %f from %i\n", k, h, myId, xpre, myId - h);
-                    }
-
-					//compute 5
-                    x = (P[k - 1][3] - P[k - 1][0] * xpre - P[k - 1][2] * xnext) / (P[k - 1][1]);
-					
-					localFlops += 5;
-                }
-            }
-
+    for (int i = 1; i <= noOfProcesses; i++) {
+        if (myId == i) {
+			for(int j = 0; j < localPiSize; j += 4) {
+				//            debug_array(P[n],4, )
+					x[j] = P[n][j+3] / (P[n][j+1]);
+				    printf("i:%d - %f = %f / %f\n", i, x[j], P[n][j+3], P[n][j+1]);
+				 
+				 //increase flops
+				 localFlops++;
+			}
         }
     }
 }
 
 void reductionPhase() {
-    for (int j = 1; j < n; j++) {
+
+    for (int j = 1; j <= n; j++) {
 
         h = pow(2, j - 1);
-        Pnext = new double[4];
-        Pprevious = new double[4];
+        Pnext = new double[4 * localSize];
+        Pprevious = new double[4 * localSize];
 
-        for (int i = pow(2, j); i < pow(2, n); i += pow(2, j)) {
-
+        for (int i = 1; i <= noOfProcesses; i++) {
             //debug("Reduction: i", (double)i)            
-            if (myId == i - h) {
-                //                printf("Processor %i send %f to %i\n", myId, P[j - 1][0], i);
-                MPI_Send(P[j - 1], 4, MPI_DOUBLE, i, 0, MPI_COMM_WORLD);
-            } else if (myId == i + h) {
-                //printf("Processor %i send %f to %i\n", myId, P[j - 1][0], i);
-                MPI_Send(P[j - 1], 4, MPI_DOUBLE, i, 1, MPI_COMM_WORLD);
-
+            if (myId == i - h && i - h > 0) {
+          //      printf("J:%d - Processor %i send %f,%f,%f,%f to %i\n", j, myId, P[j - 1][0], P[j - 1][1], P[j - 1][2], P[j - 1][3], i);
+                MPI_Send(P[j - 1], localPiSize, MPI_DOUBLE, i-1, 0, MPI_COMM_WORLD);
+            } else if (myId == i + h && i + h <= noOfProcesses) {
+           //     printf("J:%d - Processor %i send %f,%f,%f,%f to %i\n", j, myId, P[j - 1][0], P[j - 1][1], P[j - 1][2], P[j - 1][3], i);
+                MPI_Send(P[j - 1], localPiSize, MPI_DOUBLE, i-1, 1, MPI_COMM_WORLD);
             } else if (myId == i) {
 
-                //printf("Processor %i receive from %i and %i\n", myId, i - h, i + h);
-                MPI_Recv(Pprevious, 4, MPI_DOUBLE, i - h, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                //printf("Processor %i received %f from %i\n", myId, Pprevious[0], i - h);
-                MPI_Recv(Pnext, 4, MPI_DOUBLE, i + h, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                if (i - h > 0) {
+                    //printf("Processor %i receive from %i and %i\n", myId, i - h, i + h);
+                    MPI_Recv(Pprevious, localPiSize, MPI_DOUBLE, i - h - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            //        printf("J:%d - Processor %i received %f,%f,%f,%f from %i\n", j, myId, Pprevious[0], P[j - 1][1], P[j - 1][2], P[j - 1][3], i - h);
+                } else {
+				        Pprevious = new double[localPiSize]; 
+				        for(int p = 0; p < localPiSize; p += 4)
+				        {
+							Pprevious[p] = 0;
+							Pprevious[p+1] = 1;
+							Pprevious[p+2] = 0;
+							Pprevious[p+3] = 0;
+						};
+				}           
+                
+                if (i + h <= noOfProcesses) {
 
-                //printf("Processor %i received %f from %i\n", myId, Pnext[0], i + h);
+                    MPI_Recv(Pnext, localPiSize, MPI_DOUBLE, i + h - 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            //        printf("J:%d - Processor %i received %f,%f,%f,%f from %i\n", j, myId, Pnext[0], P[j - 1][1], P[j - 1][2], P[j - 1][3], i + h);
+                } else {
+					Pnext = new double[localPiSize];
+			        for(int p = 0; p < localPiSize; p += 4)
+				        {
+							Pnext[p] = 0;
+							Pnext[p+1] = 1;
+							Pnext[p+2] = 0;
+							Pnext[p+3] = 0;
+						};
+				}
                 computePi(j, i);
-
             }
         }
     }
@@ -203,55 +210,34 @@ void reductionPhase() {
 void computePi(int j, int i) {
     //init
     double e, f;
+	
+    debug_array(P[j - 1], localPiSize, "P " + std::to_string(j - 1) + " of " + std::to_string(i));
+    debug_array(Pprevious, localPiSize, "Pprevious " + std::to_string(j - 1) + " of " + std::to_string(i));
+    debug_array(Pnext, localPiSize, "Pnext " + std::to_string(j - 1) + " of " + std::to_string(i));
 
-    //debug("(B[j - 1][i - h])", (B[j - 1][i - h]));
-    //debug_array(B[j - 1], M, "B");
+    P[j] = new double[localPiSize];
 
-    //debug_array(P[j - 1], 4, "P " + std::to_string(j - 1));
+	for(int p = 0; p < localPiSize; p += 4) {
+		e = -(P[j - 1][p]) / (Pprevious[p+1]);
+		//printf("Processor %i(j:%d) - e:%f = -P[j-1][0]:%f / Pprevious[1]:%f\n", i, j, e, P[j - 1][0], Pprevious[1]);
 
-	if(myId > 0)
-	{
-		if (myId == 0) {
-			Pprevious = new double[4] {
-				0, 1, 0, 0
-			};
-		} else if (myId == N-1) {
-			Pnext = new double[4] {
-				0, 1, 0, 0
-			};
-		}  
-     
+		f = -(P[j - 1][p+2]) / (Pnext[p+1]);
 
-        P[j] = new double[4];
+		P[j][p] = e * Pprevious[p];
+		P[j][p+2] = f * Pnext[p+2];
+		P[j][p+1] = P[j - 1][p+1] + e * Pprevious[p+2] + f * Pnext[p];
+		P[j][p+3] = P[j - 1][p+3] + e * Pprevious[p+3] + f * Pnext[p+3];
 
-        //debug_array(Pprevious, 4, "Pprevious ");
-        //debug_array(Pnext, 4, "Pnext ");
-
-		//compute 1
-        e = -(P[j - 1][0]) / (Pprevious[1]);
-		//compute 1
-        f = -(P[j - 1][2]) / (Pnext[1]);
-		//compute 1
-        P[j][0] = e * Pprevious[0];
-        //compute 1
-        P[j][2] = f * Pnext[2];
-        //compute 4
-        P[j][1] = P[j - 1][1] + e * Pprevious[2] + f * Pnext[0];
-        //compute 4
-        P[j][3] = P[j - 1][3] + e * Pprevious[3] + f * Pnext[3];
-
-        //debug_array(P[j], 4, "P" + std::to_string(j) + " of processor " + std::to_string(myId));
-        //printf("Processor %i computePi(j:%i, i:%i, h:%i, e:%f, f:%f)\n", i, j, i, h, e, f);
-
-		//add Flops
+		//debug_array(P[j], 4, "P" + std::to_string(j) + " of processor " + std::to_string(myId));
+		printf("Processor %i computePi(j:%i, i:%i, h:%i, e:%f, f:%f, P[j][p]:%f, P[j][p+1]:%f, P[j][p+2]:%f, P[j][p+3]:%f)\n", i, j, i, h, e, f, P[j][p], P[j][p+1], P[j][p+2], P[j][p+3]);
+	
+		
+		//increase flops
 		localFlops += 12;
-    
-	}
-    
+	}	
 }
 
 //debug functions
-
 void debug(string msg, double varr) {
 
     cout << "\nDebugging....." << msg << ": <" << varr << ">\n";
@@ -282,8 +268,4 @@ void array_remove(double* arr, int size, int removeIdx) {
     }
 }
 
-void debug_exit() {
-    MPI_Barrier(MPI_COMM_WORLD);
-    MPI_Finalize();
-    exit(0);
-}
+

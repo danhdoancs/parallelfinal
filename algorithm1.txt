@@ -1,5 +1,5 @@
 /*
- * File:   main.cpp
+ * File:   Algorithm1.cpp
  * Author: david doan
  *
  * Created on April 15, 2015, 10:05 PM
@@ -48,28 +48,31 @@ int main(int argc, char** argv) {
     MPI_Comm_size(MPI_COMM_WORLD, &noOfProcesses);
     MPI_Comm_rank(MPI_COMM_WORLD, &myId);
 
-    N = noOfProcesses;
-    M = N - 1;
+    N = noOfProcesses + 1;
+    M = noOfProcesses;
     n = log2(N);
 
     // wait for all to come together
     MPI_Barrier(MPI_COMM_WORLD);
     s_time = MPI_Wtime();
 
+	//start from 1
+	myId++;
+
     //run
-    if (myId == 0) {
+    if (myId == 1) {
         //broadcast initial values
-        A = new double[N];
-        B = new double[N];
-        C = new double[N];
-        D = new double[N];
+        A = new double[M];
+        B = new double[M];
+        C = new double[M];
+        D = new double[M];
         
-        A[0] = 0; A[1] = 0; A[N-1] = 1;
-        B[0] = 0; B[1] = -4; B[N-1] = -4;
-        C[0] = 0; C[1] = 1; C[N-1] = 0;
-        D[0] = 0; D[1] = -3; D[N-1] = -3;
+        A[0] = 0; A[M-1] = 1;
+        B[0] = -4; B[M-1] = -4;
+        C[0] = 1; C[M-1] = 0;
+        D[0] = -3; D[M-1] = -3;
         
-        for (int i = 2; i < N-1; i++) {
+        for (int i = 1; i < M-1; i++) {
             
             A[i] = 1;
             B[i] = -4;
@@ -77,16 +80,19 @@ int main(int argc, char** argv) {
             D[i] = -2;        
         }
         
-        Po = new double[N * 4];
-        for (int i = 0, j = 0; i < N; i++) {
+        Po = new double[M * 4];
+        for (int i = 0, j = 0; i < M; i++) {
             Po[j++] = A[i];
             Po[j++] = B[i];
             Po[j++] = C[i];
             Po[j++] = D[i];
         }
-        //debug_array(Po, N * 4, "@@@@@@@@@@@@@@@@@@@@@@@@@ Po");
-        
-        X = new double[N];
+        //debug_array(Po, M * 4, "@@@@@@@@@@@@@@@@@@@@@@@@@ Po");
+        debug_array(A, M, "Vector A");
+        debug_array(B, M, "Vector B");
+        debug_array(C, M, "Vector C");
+        debug_array(D, M, "Vector D");
+        X = new double[M];
     }
 
     //broadcast values
@@ -96,23 +102,24 @@ int main(int argc, char** argv) {
     MPI_Scatter(Po, 4, MPI_DOUBLE, P[0], 4, MPI_DOUBLE, 0, MPI_COMM_WORLD);
     //debug_array(P[0], 4, "%%%%%%%%%%%%%%%%%%%%%%%%% P[0]");
     //debug_exit();
-    if (myId > 0) {
-        reductionPhase();
-        backSubstitutionPhase();
-    }
+
+    reductionPhase();
+    backSubstitutionPhase();
+    
     
     MPI_Gather(&x, 1, MPI_DOUBLE, X, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
     
+    MPI_Barrier(MPI_COMM_WORLD);
+    e_time = MPI_Wtime();
+
     //sum up the Flops
     long globalFlops = 0;
 	MPI_Reduce(&localFlops, &globalFlops, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
 
-    MPI_Barrier(MPI_COMM_WORLD);
-    e_time = MPI_Wtime();
-
-    if (myId == 0) {
-        array_remove(X, N, 0);
+    if (myId == 1) {
         debug_array(X, M, "array X");
+        printf("Number of processors: %d\n", noOfProcesses);
+        printf("Size of matrix A: 2^%d - 1\n", n);
         printf("Run time: %f seconds\n", (e_time - s_time));
         printf("Number of floating point operations: %ld\n", globalFlops);
     }
@@ -137,60 +144,86 @@ void backSubstitutionPhase() {
         int t = 1;
         for (int i = t * h; i <= N - h; ++t, i = t * h) {
             if (myId == i) {
+				
+				//printf("k:%i,h:%i - Processor %i\n", k, h, myId);
                 if (t % 2 == 0) {
-                    //                    printf("k:%i,h:%i - Processor %i send %f to %i\n", k, h, myId, x, myId + h);
-                    MPI_Send(&x, 1, MPI_DOUBLE, myId + h, 0, MPI_COMM_WORLD);
-                    //                    printf("k:%i,h:%i - Processor %i send %f to %i\n", k, h, myId, x, myId - h);
-                    MPI_Send(&x, 1, MPI_DOUBLE, i - h, 0, MPI_COMM_WORLD);
+                    if(myId + h <= N -h) {
+						
+					//~ printf("k:%i,h:%i - Processor %i send %f to %i\n", k, h, myId, x, myId + h);
+                    MPI_Send(&x, 1, MPI_DOUBLE, myId + h - 1, 0, MPI_COMM_WORLD);
+				}
+                    if(myId - h >= h) {
+						
+					//~ printf("k:%i,h:%i - Processor %i send %f to %i\n", k, h, myId, x, myId - h);
+                    MPI_Send(&x, 1, MPI_DOUBLE, i - h - 1, 0, MPI_COMM_WORLD);
+				}
                 } else {
+					//printf("k:%i,h:%i - Processor %i\n", k, h, myId);
                     if (myId + h <= N - h) {
                         //printf("k:%i,h:%i - Processor %i receive from %i\n", k, h, myId, myId + h);
-                        MPI_Recv(&xnext, 1, MPI_DOUBLE, myId + h, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                        //                        printf("k:%i,h:%i - Processor %i received %f from %i\n", k, h, myId, xnext, myId + h);
-                    }
+                        MPI_Recv(&xnext, 1, MPI_DOUBLE, myId + h - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+						//~ printf("k:%i,h:%i - Processor %i received %f from %i\n", k, h, myId, xnext, myId + h);
+                    } else {
+						xnext = 0;
+					}
 
                     if (myId - h >= h) {
-                        //                        printf("k:%i,h:%i - Processor %i receive from %i\n", k, h, myId, myId - h);
-                        MPI_Recv(&xpre, 1, MPI_DOUBLE, i - h, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                        //                        printf("k:%i,h:%i - Processor %i received %f from %i\n", k, h, myId, xpre, myId - h);
-                    }
+                                                //printf("k:%i,h:%i - Processor %i receive from %i\n", k, h, myId, myId - h);
+                        MPI_Recv(&xpre, 1, MPI_DOUBLE, i - h - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+						//printf("k:%i,h:%i - Processor %i received %f from %i\n", k, h, myId, xpre, myId - h);
+						} else {
+							xpre = 0;
+						}
 
 					//compute 5
                     x = (P[k - 1][3] - P[k - 1][0] * xpre - P[k - 1][2] * xnext) / (P[k - 1][1]);
-					
+					//~ printf("k:%i,h:%i - Processor %i recovered x= %f\n", k, h, myId, x);
 					localFlops += 5;
                 }
             }
-
         }
     }
 }
 
 void reductionPhase() {
     for (int j = 1; j < n; j++) {
-
+		//debug("Reduction: j", (double)j) ; 
         h = pow(2, j - 1);
         Pnext = new double[4];
         Pprevious = new double[4];
-
+	
         for (int i = pow(2, j); i < pow(2, n); i += pow(2, j)) {
 
-            //debug("Reduction: i", (double)i)            
+           // debug("Reduction: i", (double)i)  ;          
             if (myId == i - h) {
-                //                printf("Processor %i send %f to %i\n", myId, P[j - 1][0], i);
-                MPI_Send(P[j - 1], 4, MPI_DOUBLE, i, 0, MPI_COMM_WORLD);
+				//printf("j:%d - Processor %i send %f to %i\n", j, myId, P[j - 1][0], i);
+                MPI_Send(P[j - 1], 4, MPI_DOUBLE, i-1, 0, MPI_COMM_WORLD);
             } else if (myId == i + h) {
-                //printf("Processor %i send %f to %i\n", myId, P[j - 1][0], i);
-                MPI_Send(P[j - 1], 4, MPI_DOUBLE, i, 1, MPI_COMM_WORLD);
+                //printf("j:%d - Processor %i send %f to %i\n",j, myId, P[j - 1][0], i);
+                MPI_Send(P[j - 1], 4, MPI_DOUBLE, i-1, 1, MPI_COMM_WORLD);
 
             } else if (myId == i) {
 
+				if(i-h >= h) {
                 //printf("Processor %i receive from %i and %i\n", myId, i - h, i + h);
-                MPI_Recv(Pprevious, 4, MPI_DOUBLE, i - h, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                //printf("Processor %i received %f from %i\n", myId, Pprevious[0], i - h);
-                MPI_Recv(Pnext, 4, MPI_DOUBLE, i + h, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-                //printf("Processor %i received %f from %i\n", myId, Pnext[0], i + h);
+                MPI_Recv(Pprevious, 4, MPI_DOUBLE, i - h-1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);              
+                //printf("j:%d - Processor %i received %f from %i\n",j, myId, Pprevious[0], i - h);
+				}
+				else
+				{
+					Pprevious = new double[4] {
+						0, 1, 0, 0
+					};
+				}
+				
+				if(i+h <= N-h) {
+                MPI_Recv(Pnext, 4, MPI_DOUBLE, i + h-1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                //printf("j:%d - Processor %i received %f from %i\n",j, myId, Pnext[0], i + h);
+				} else {
+					Pnext = new double[4] {
+						0, 1, 0, 0
+					};					
+				}
                 computePi(j, i);
 
             }
@@ -207,44 +240,29 @@ void computePi(int j, int i) {
 
     //debug_array(P[j - 1], 4, "P " + std::to_string(j - 1));
 
-	if(myId > 0)
-	{
-		if (myId == 0) {
-			Pprevious = new double[4] {
-				0, 1, 0, 0
-			};
-		} else if (myId == N-1) {
-			Pnext = new double[4] {
-				0, 1, 0, 0
-			};
-		}  
-     
+	P[j] = new double[4];
 
-        P[j] = new double[4];
+	//debug_array(Pprevious, 4, "Pprevious ");
+	//debug_array(Pnext, 4, "Pnext ");
 
-        //debug_array(Pprevious, 4, "Pprevious ");
-        //debug_array(Pnext, 4, "Pnext ");
+	//compute 1
+	e = -(P[j - 1][0]) / (Pprevious[1]);
+	//compute 1
+	f = -(P[j - 1][2]) / (Pnext[1]);
+	//compute 1
+	P[j][0] = e * Pprevious[0];
+	//compute 1
+	P[j][2] = f * Pnext[2];
+	//compute 4
+	P[j][1] = P[j - 1][1] + e * Pprevious[2] + f * Pnext[0];
+	//compute 4
+	P[j][3] = P[j - 1][3] + e * Pprevious[3] + f * Pnext[3];
 
-		//compute 1
-        e = -(P[j - 1][0]) / (Pprevious[1]);
-		//compute 1
-        f = -(P[j - 1][2]) / (Pnext[1]);
-		//compute 1
-        P[j][0] = e * Pprevious[0];
-        //compute 1
-        P[j][2] = f * Pnext[2];
-        //compute 4
-        P[j][1] = P[j - 1][1] + e * Pprevious[2] + f * Pnext[0];
-        //compute 4
-        P[j][3] = P[j - 1][3] + e * Pprevious[3] + f * Pnext[3];
+	//debug_array(P[j], 4, "P" + std::to_string(j) + " of processor " + std::to_string(myId));
+	printf("Processor %i computePi(j:%i, i:%i, h:%i, e:%f, f:%f)\n", i, j, i, h, e, f);
 
-        //debug_array(P[j], 4, "P" + std::to_string(j) + " of processor " + std::to_string(myId));
-        //printf("Processor %i computePi(j:%i, i:%i, h:%i, e:%f, f:%f)\n", i, j, i, h, e, f);
-
-		//add Flops
-		localFlops += 12;
-    
-	}
+	//add Flops
+	localFlops += 12;
     
 }
 
