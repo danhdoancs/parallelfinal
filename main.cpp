@@ -49,7 +49,7 @@ int main(int argc, char** argv) {
     MPI_Comm_size(MPI_COMM_WORLD, &noOfProcesses);
     MPI_Comm_rank(MPI_COMM_WORLD, &myId);
 
-	localSize = pow(2,1);
+	localSize = pow(1,1);
     N = noOfProcesses * localSize;
     n = log2(N);
     P = new double*[n];
