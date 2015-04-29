@@ -24,10 +24,11 @@ long_line_column=72
 
 [files]
 current_page=0
-FILE_NAME_0=6995;C++;0;EUTF-8;1;1;0;%2Fprj%2Fcpp%2FParallelFinal%2Fmain.cpp;0;4
-FILE_NAME_1=5919;None;0;EUTF-8;1;1;0;%2Fprj%2Fcpp%2FParallelFinal%2Falgorithm2.txt;0;4
+FILE_NAME_0=1030;C++;0;EUTF-8;1;1;0;%2Fprj%2Fcpp%2FParallelFinal%2Fmain.cpp;0;4
+FILE_NAME_1=0;None;0;EUTF-8;1;1;0;%2Fprj%2Fcpp%2FParallelFinal%2Falgorithm2.txt;0;4
 FILE_NAME_2=2441;None;0;EUTF-8;1;1;0;%2Fprj%2Fcpp%2FParallelFinal%2Falgorithm1.txt;0;4
 FILE_NAME_3=0;None;0;EUTF-8;1;1;0;%2Fprj%2Fcpp%2FParallelFinal%2Fmain_bk2.txt;0;4
+FILE_NAME_4=8788;None;0;EUTF-8;1;1;0;%2Fprj%2Fcpp%2FParallelFinal%2F2bk_multi.txt;0;4
 
 [VTE]
 last_dir=/prj/cpp/ParallelFinal

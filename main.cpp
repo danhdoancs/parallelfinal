@@ -113,7 +113,7 @@ int main(int argc, char** argv) {
     reductionPhase();
     backSubstitutionPhase();
 
-    MPI_Gather(x, localSize, MPI_DOUBLE, X, localSize, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Gather(&x, localSize, MPI_DOUBLE, X, localSize, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
     MPI_Barrier(MPI_COMM_WORLD);
     e_time = MPI_Wtime();
@@ -229,8 +229,7 @@ void computePi(int j, int i) {
 		P[j][p+3] = P[j - 1][p+3] + e * Pprevious[p+3] + f * Pnext[p+3];
 
 		//debug_array(P[j], 4, "P" + std::to_string(j) + " of processor " + std::to_string(myId));
-		printf("Processor %i computePi(j:%i, i:%i, h:%i, e:%f, f:%f, P[j][p]:%f, P[j][p+1]:%f, P[j][p+2]:%f, P[j][p+3]:%f)\n", i, j, i, h, e, f, P[j][p], P[j][p+1], P[j][p+2], P[j][p+3]);
-	
+		printf("Processor %i computePi(j:%i, i:%i, h:%i, e:%f, f:%f)\n", i, j, i, h, e, f);
 		
 		//increase flops
 		localFlops += 12;
